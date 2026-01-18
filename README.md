@@ -106,6 +106,32 @@ uv run main.py
 
 ---
 
+## 💬 Slack Integration
+
+Control your Windows-Use agent directly from Slack! The Slack integration allows you to automate Windows tasks through Slack messages, @mentions, and slash commands.
+
+**Quick Start:**
+```bash
+# Install dependencies
+pip install -e .
+
+# Configure Slack tokens in .env
+cp .env.example .env
+# Edit .env and add your SLACK_BOT_TOKEN and SLACK_APP_TOKEN
+
+# Run the Slack bot
+python slack_bot.py
+```
+
+**Usage Examples:**
+- Send a DM: `open notepad and type hello world`
+- Mention in channel: `@Windows-Use Agent take a screenshot`
+- Slash command: `/windows launch calculator`
+
+📖 **Full setup guide:** See [SLACK.md](SLACK.md) for complete instructions on creating and configuring your Slack app.
+
+---
+
 ## 🎥 Demos
 
 **PROMPT:** Write a short note about LLMs and save to the desktop
