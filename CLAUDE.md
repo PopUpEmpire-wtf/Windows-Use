@@ -608,11 +608,65 @@ class Agent:
 | `drag_tool` | Drag-and-drop | `to_x, to_y, button` |
 | `move_tool` | Mouse movement | `x, y` |
 | `wait_tool` | Delay | `duration` |
-| `shortcut_tool` | Keyboard shortcuts | `keys` |
+| `shortcut_tool` | Keyboard shortcuts | `shortcut` |
 | `shell_tool` | Execute commands | `command` |
 | `scrape_tool` | Extract webpage text | `id` |
 | `multi_select_tool` | Multi-select items | `ids` |
 | `multi_edit_tool` | Multi-line editing | `entries` |
+
+#### Keyboard Shortcuts (`shortcut_tool`)
+
+The `shortcut_tool` is a powerful way to execute keyboard shortcuts for rapid command execution and navigation. It's often more efficient than mouse-based navigation for many operations.
+
+**Parameter**: `shortcut` (string)
+
+**Supported Formats**:
+- **Single keys**: `'enter'`, `'escape'`, `'tab'`, `'delete'`, `'backspace'`, `'win'`
+- **Key combinations**: Use `'+'` to separate simultaneous keys
+  - `'ctrl+c'` - Copy
+  - `'ctrl+v'` - Paste
+  - `'ctrl+x'` - Cut
+  - `'alt+tab'` - Switch windows
+  - `'ctrl+shift+n'` - New incognito window (Chrome)
+  - `'win+d'` - Show desktop
+  - `'ctrl+alt+delete'` - Security screen
+
+**Common Windows Shortcuts**:
+```python
+# Window Management
+shortcut_tool(shortcut="win+left")      # Snap window left
+shortcut_tool(shortcut="win+right")     # Snap window right
+shortcut_tool(shortcut="win+up")        # Maximize window
+shortcut_tool(shortcut="win+down")      # Minimize/restore window
+shortcut_tool(shortcut="alt+f4")        # Close window
+
+# Application Shortcuts
+shortcut_tool(shortcut="ctrl+n")        # New window/document
+shortcut_tool(shortcut="ctrl+w")        # Close tab/window
+shortcut_tool(shortcut="ctrl+s")        # Save
+shortcut_tool(shortcut="ctrl+z")        # Undo
+shortcut_tool(shortcut="ctrl+y")        # Redo
+shortcut_tool(shortcut="ctrl+f")        # Find
+shortcut_tool(shortcut="ctrl+a")        # Select all
+
+# Navigation
+shortcut_tool(shortcut="tab")           # Next field
+shortcut_tool(shortcut="shift+tab")     # Previous field
+shortcut_tool(shortcut="enter")         # Confirm/submit
+shortcut_tool(shortcut="escape")        # Cancel/close
+shortcut_tool(shortcut="alt+left")      # Browser back
+shortcut_tool(shortcut="alt+right")     # Browser forward
+```
+
+**Use Cases**:
+- Copy/paste operations (`ctrl+c`, `ctrl+v`)
+- Window switching and management (`alt+tab`, `win+left`)
+- Menu access and navigation
+- Application-specific shortcuts
+- Text editing operations
+- Browser navigation
+
+**Implementation**: Uses `pyautogui.hotkey()` for simultaneous key presses.
 
 #### Creating New Tools
 
@@ -1125,6 +1179,74 @@ print(f"Apps: {len(desktop_state.apps)}")
 print(f"Interactive elements: {len(desktop_state.tree.interactive)}")
 print(f"Cursor: {desktop_state.cursor}")
 ```
+
+### Task 6: Using Keyboard Shortcuts Effectively
+
+**Goal**: Perform common operations using shortcuts instead of mouse clicks for better efficiency.
+
+**Example: Copy text from one application and paste to another**
+
+```python
+# Scenario: Copy text from Notepad and paste into Word
+
+# 1. Switch to Notepad
+app_tool(name="notepad", status="open")
+
+# 2. Select all text
+shortcut_tool(shortcut="ctrl+a")
+
+# 3. Copy text
+shortcut_tool(shortcut="ctrl+c")
+
+# 4. Switch to Word
+app_tool(name="winword", status="open")
+
+# 5. Paste text
+shortcut_tool(shortcut="ctrl+v")
+```
+
+**Example: Window management workflow**
+
+```python
+# Snap current window to left half of screen
+shortcut_tool(shortcut="win+left")
+
+# Open new application
+app_tool(name="chrome", status="open")
+
+# Snap to right half of screen
+shortcut_tool(shortcut="win+right")
+
+# Now you have split screen with two apps
+```
+
+**Example: Browser navigation**
+
+```python
+# Open new tab
+shortcut_tool(shortcut="ctrl+t")
+
+# Close current tab
+shortcut_tool(shortcut="ctrl+w")
+
+# Reopen closed tab
+shortcut_tool(shortcut="ctrl+shift+t")
+
+# Switch between tabs
+shortcut_tool(shortcut="ctrl+tab")
+
+# Go back
+shortcut_tool(shortcut="alt+left")
+
+# Refresh page
+shortcut_tool(shortcut="f5")
+```
+
+**Best Practices**:
+- Use shortcuts instead of clicks when possible (faster, more reliable)
+- Combine with `wait_tool` if the shortcut triggers an action that needs time
+- Test shortcuts in the target application (some apps override standard shortcuts)
+- Use `alt+tab` for quick window switching instead of clicking taskbar
 
 ---
 
