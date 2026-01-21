@@ -15,10 +15,10 @@ class TreeState:
             return "No interactive elements"
         # TOON-like format: Pipe-separated values with clear header
         # Using abbreviations in header to save tokens
-        header = "# id|app|type|name|val|keys|coords|focus"
+        header = "# id|app|type|name|coords|focus"
         rows = [header]
         for idx, node in enumerate(self.interactive_nodes):
-            row = f"{idx}|{node.app_name}|{node.control_type}|{node.name}|{node.value}|{node.shortcut}|{node.center.to_string()}|{node.is_focused}"
+            row = f"{idx}|{node.app_name}|{node.control_type}|{node.name}|{node.center.to_string()}|{node.is_focused}"
             rows.append(row)
         return "\n".join(rows)
 
@@ -45,6 +45,17 @@ class BoundingBox:
     width:int
     height:int
 
+    @classmethod
+    def from_bounding_rectangle(cls,bounding_rectangle:'BoundingRectangle')->'BoundingBox':
+        return cls(
+            left=bounding_rectangle.left,
+            top=bounding_rectangle.top,
+            right=bounding_rectangle.right,
+            bottom=bounding_rectangle.bottom,
+            width=bounding_rectangle.width(),
+            height=bounding_rectangle.height()
+        )
+
     def get_center(self)->'Center':
         return Center(x=self.left+self.width//2,y=self.top+self.height//2)
 
@@ -70,17 +81,26 @@ class Center:
 
 @dataclass
 class TreeElementNode:
-    name: str
-    runtime_id:tuple[int, ...]
-    cursor_type:str
-    control_type: str
-    app_name: str
-    value:str
-    shortcut: str
     bounding_box: BoundingBox
     center: Center
-    xpath:str
-    is_focused:bool
+    name: str=''
+    control_type: str=''
+    app_name: str=''
+    value:str=''
+    shortcut: str=''
+    xpath:str=''
+    is_focused:bool=False
+
+    def update_from_node(self,node:'TreeElementNode'):
+        self.name=node.name
+        self.control_type=node.control_type
+        self.app_name=node.app_name
+        self.value=node.value
+        self.shortcut=node.shortcut
+        self.bounding_box=node.bounding_box
+        self.center=node.center
+        self.xpath=node.xpath
+        self.is_focused=node.is_focused
 
     # Legacy method kept for compatibility if needed, but not used in new format
     def to_row(self, index: int):
@@ -89,7 +109,6 @@ class TreeElementNode:
 @dataclass
 class ScrollElementNode:
     name: str
-    runtime_id:tuple[int, ...]
     control_type: str
     xpath:str
     app_name: str

@@ -7,55 +7,17 @@ from windows_use.uia.enums import TreeScope
 from threading import Thread, Event
 import comtypes.client
 import comtypes
+import logging
+import weakref
 
-# Get UIA Interface for COM definitions
-uia_client = _AutomationClient.instance()
-UIA = uia_client.UIAutomationCore
+from .event_handlers import (
+    FocusChangedEventHandler,
+    StructureChangedEventHandler,
+    PropertyChangedEventHandler
+)
 
-class FocusChangedEventHandler(comtypes.COMObject):
-    _com_interfaces_ = [UIA.IUIAutomationFocusChangedEventHandler]
-
-    def __init__(self, parent):
-        self.parent = parent
-        super(FocusChangedEventHandler, self).__init__()
-
-    def HandleFocusChangedEvent(self, sender):
-        try:
-            if self.parent._focus_callback:
-                self.parent._focus_callback(sender)
-        except Exception as e:
-            print(f"Error in focus callback: {e}")
-        return 0 # S_OK
-
-class StructureChangedEventHandler(comtypes.COMObject):
-    _com_interfaces_ = [UIA.IUIAutomationStructureChangedEventHandler]
-
-    def __init__(self, parent):
-        self.parent = parent
-        super(StructureChangedEventHandler, self).__init__()
-
-    def HandleStructureChangedEvent(self, sender, changeType, runtimeId):
-        try:
-            if self.parent._structure_callback:
-                self.parent._structure_callback(sender, changeType, runtimeId)
-        except Exception as e:
-            print(f"Error in structure callback: {e}")
-        return 0 # S_OK
-
-class PropertyChangedEventHandler(comtypes.COMObject):
-    _com_interfaces_ = [UIA.IUIAutomationPropertyChangedEventHandler]
-
-    def __init__(self, parent):
-        self.parent = parent
-        super(PropertyChangedEventHandler, self).__init__()
-
-    def HandlePropertyChangedEvent(self, sender, propertyId, newValue):
-        try:
-            if self.parent._property_callback:
-                self.parent._property_callback(sender, propertyId, newValue)
-        except Exception as e:
-            print(f"Error in property callback: {e}")
-        return 0 # S_OK
+logger = logging.getLogger(__name__)
+logger.setLevel(logging.INFO)
 
 class WatchDog:
     def __init__(self):
@@ -133,12 +95,12 @@ class WatchDog:
                         self._focus_handler = FocusChangedEventHandler(self)
                         self.uia.AddFocusChangedEventHandler(None, self._focus_handler)
                     except Exception as e:
-                        print(f"Failed to add focus handler: {e}")
+                        logger.debug(f"Failed to add focus handler: {e}")
                 elif not self._focus_callback and self._focus_handler:
                     try:
                         self.uia.RemoveFocusChangedEventHandler(self._focus_handler)
                     except Exception as e:
-                        print(f"Failed to remove focus handler: {e}")
+                        logger.debug(f"Failed to remove focus handler: {e}")
                     self._focus_handler = None
 
                 # --- Structure Monitoring ---
@@ -153,7 +115,7 @@ class WatchDog:
                         target = self._active_structure_element if self._active_structure_element else self.uia.GetRootElement()
                         self.uia.RemoveStructureChangedEventHandler(target, self._structure_handler)
                     except Exception as e:
-                        print(f"Failed to remove structure handler: {e}")
+                        logger.debug(f"Failed to remove structure handler: {e}")
                     self._structure_handler = None
                     self._active_structure_element = None
                     is_active = False
@@ -167,7 +129,7 @@ class WatchDog:
                         self.uia.AddStructureChangedEventHandler(target, scope, None, self._structure_handler)
                         self._active_structure_element = target
                     except Exception as e:
-                        print(f"Failed to add structure handler: {e}")
+                        logger.debug(f"Failed to add structure handler: {e}")
 
                 # --- Property Monitoring ---
                 config_changed = (self._property_element != self._active_property_element) or \
@@ -215,17 +177,23 @@ class WatchDog:
                 try: 
                     self.uia.RemoveFocusChangedEventHandler(self._focus_handler)
                 except: pass
+                self._focus_handler = None
             
             if self._structure_handler:
                 try:
                     target = self._active_structure_element if self._active_structure_element else self.uia.GetRootElement()
                     self.uia.RemoveStructureChangedEventHandler(target, self._structure_handler)
                 except: pass
+                self._structure_handler = None
+                self._active_structure_element = None
 
             if self._property_handler:
                 try:
                     target = self._active_property_element if self._active_property_element else self.uia.GetRootElement()
                     self.uia.RemovePropertyChangedEventHandler(target, self._property_handler)
                 except: pass
+                self._property_handler = None
+                self._active_property_element = None
+                self._active_property_ids = None
             
             comtypes.CoUninitialize()

@@ -1,5 +1,5 @@
-from windows_use.agent.tools.service import (click_tool, type_tool, shell_tool, done_tool, multi_select_tool,memory_tool,
-shortcut_tool, scroll_tool, drag_tool, move_tool, wait_tool, app_tool, scrape_tool, multi_edit_tool)
+from windows_use.agent.tools.service import (click_tool, type_tool, shell_tool, done_tool,
+shortcut_tool, scroll_tool, move_tool, wait_tool, app_tool, scrape_tool, desktop_tool)
 from windows_use.messages import SystemMessage, HumanMessage, AIMessage, ImageMessage
 from windows_use.telemetry.views import AgentTelemetryEvent
 from windows_use.telemetry.service import ProductTelemetry
@@ -7,40 +7,59 @@ from windows_use.agent.views import AgentResult,AgentStep
 from windows_use.agent.registry.service import Registry
 from windows_use.agent.watchdog.service import WatchDog
 from windows_use.agent.registry.views import ToolResult
-from windows_use.uia.enums import StructureChangeType
-from windows_use.agent.utils import extract_agent_data
 from windows_use.agent.desktop.service import Desktop
 from windows_use.agent.desktop.views import Browser
 from windows_use.agent.prompt.service import Prompt
 from windows_use.llms.base import BaseChatLLM
+from windows_use.agent.utils import xml_parser
 from windows_use.uia import Control
 from contextlib import nullcontext
 from rich.markdown import Markdown
 from rich.console import Console
 import logging
 
-logger = logging.getLogger(__name__)
-logger.setLevel(logging.DEBUG)
+logger = logging.getLogger("windows_use")
+logger.setLevel(logging.INFO)
 handler = logging.StreamHandler()
 formatter = logging.Formatter('[%(levelname)s] %(message)s')
 handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 class Agent:
-    def __init__(self,instructions:list[str]=[],browser:Browser=Browser.EDGE, llm: BaseChatLLM=None,max_consecutive_failures:int=3,max_steps:int=25,use_vision:bool=False,auto_minimize:bool=False):
+    def __init__(self,instructions:list[str]=[],browser:Browser=Browser.EDGE, use_annotation:bool=False, llm: BaseChatLLM=None,max_consecutive_failures:int=3,max_steps:int=25,use_vision:bool=False,auto_minimize:bool=False):
+        '''
+        Initialize the Windows Use Agent.
+
+        The Agent is the core component that orchestrates interactions with the Windows GUI.
+        It uses an LLM to process instructions, analyze the desktop state (via UI automation 
+        and optionally vision), and execute tools to achieve the desired goals.
+
+        Args:
+            instructions (list[str]): A list of additional instructions or goals for the agent to execute.
+            browser (Browser): The target web browser for web-related tasks. Defaults to Browser.EDGE.
+            use_annotation (bool): Whether to overlay UI element annotations on screenshots before providing to the LLM. Defaults to False.
+            llm (BaseChatLLM): The Large Language Model instance used for decision making.
+            max_consecutive_failures (int): Maximum number of consecutive failures before giving up.
+            max_steps (int): Maximum number of steps allowed in the agent's execution.
+            use_vision (bool): Whether to provide screenshots to the LLM. Defaults to False.
+            auto_minimize (bool): Whether to automatically minimize the current window before agent proceeds. Defaults to False.
+        '''
         self.name='Windows Use'
         self.description='An agent that can interact with GUI elements on Windows OS' 
         self.registry = Registry([
             click_tool,type_tool, app_tool, shell_tool, done_tool, 
-            shortcut_tool, scroll_tool, drag_tool, move_tool,memory_tool,
-            wait_tool, scrape_tool, multi_select_tool, multi_edit_tool
+            shortcut_tool, scroll_tool, move_tool,wait_tool,
+            scrape_tool, desktop_tool
         ])
         self.instructions=instructions
         self.browser=browser
         self.agent_step=AgentStep(max_steps=max_steps)
         self.max_consecutive_failures=max_consecutive_failures
         self.auto_minimize=auto_minimize
-        self.use_vision=use_vision
+        self.use_annotation=use_annotation
+        if self.use_annotation and not use_vision:
+            logger.warning("use_vision is set to True if use_annotation is True.")
+        self.use_vision=True if use_annotation else use_vision
         self.llm = llm
         self.telemetry=ProductTelemetry()
         self.watchdog = WatchDog()
@@ -48,16 +67,30 @@ class Agent:
         self.console=Console()
 
     def invoke(self,query: str)->AgentResult:
-        """Invoke the agent with a query."""
+        """
+        Executes a natural language query by orchestrating interactions with the Windows GUI.
+
+        This method serves as the primary entry point for the agent. It captures the current 
+        desktop state, initializes monitoring via the watchdog, and manages a multi-step 
+        execution loop where the LLM analyzes the environment and selects tools to 
+        fulfill the user's request.
+
+        Args:
+            query (str): The natural language instruction or task for the agent to perform.
+
+        Returns:
+            AgentResult: The final result of the execution, indicating success or failure 
+                        and providing a summary of the actions taken.
+        """
         if query.strip()=='':
             return AgentResult(is_done=False, error="Query is empty. Please provide a valid query.")
         try:
             with (self.desktop.auto_minimize() if self.auto_minimize else nullcontext()):
                 self.watchdog.set_focus_callback(self.desktop.tree._on_focus_change)
-                self.watchdog.set_structure_callback(self.desktop.tree._on_structure_change) 
+                # self.watchdog.set_structure_callback(self.desktop.tree._on_structure_change) 
                 self.watchdog.set_property_callback(self.desktop.tree._on_property_change)
                 with self.watchdog:
-                    desktop_state = self.desktop.get_state(use_vision=self.use_vision)
+                    desktop_state = self.desktop.get_state(use_annotation=self.use_annotation,use_vision=self.use_vision)
                     language=self.desktop.get_default_language()
                     tools_prompt = self.registry.get_tools_prompt()
                     observation="The desktop is ready to operate."
@@ -80,14 +113,33 @@ class Agent:
                         
                         logger.info(f"[Agent] 🎯 Step: {self.agent_step.steps}/{self.agent_step.max_steps}")
                         
+                        error_messages=[]
+
                         # Retry logic for LLM failures
                         for consecutive_failures in range(1, self.max_consecutive_failures + 1):
                             try:
-                                llm_response = self.llm.invoke(messages)
-                                agent_data = extract_agent_data(llm_response)
+                                llm_response = self.llm.invoke(messages+error_messages)
+                                agent_data = xml_parser(llm_response)
                                 break
+                            except ValueError as e:
+                                error_messages.clear()
+                                error_messages.append(llm_response)
+                                error_messages.append(HumanMessage(content=f"Response rejected, invalid response format\nError: {e}\nAdhere to the format specified in <output_contract>"))
+                                logger.warning(f"[LLM]: Invalid response format, Retrying attempt {consecutive_failures}/{self.max_consecutive_failures}...")
+                                if consecutive_failures == self.max_consecutive_failures:
+                                    self.telemetry.capture(AgentTelemetryEvent(
+                                        query=query,
+                                        error=str(e),
+                                        steps=self.agent_step.steps,
+                                        max_steps=self.agent_step.max_steps,
+                                        use_vision=self.use_vision,
+                                        model=self.llm.model_name,
+                                        provider=self.llm.provider,
+                                        is_success=False
+                                    ))
+                                    return AgentResult(is_done=False, error=str(e))
                             except Exception as e:
-                                logger.error(f"[LLM]: {e}. Retrying attempt {consecutive_failures}/{self.max_consecutive_failures}...")
+                                logger.error(f"[LLM]: Failed to generate response. Retrying attempt {consecutive_failures}/{self.max_consecutive_failures}...")
                                 if consecutive_failures == self.max_consecutive_failures:
                                     self.telemetry.capture(AgentTelemetryEvent(
                                         query=query,
@@ -132,7 +184,7 @@ class Agent:
                             logger.info(f"[Tool] 📝 Observation: {observation}\n")
                             agent_data.observation = observation
 
-                            desktop_state = self.desktop.get_state(use_vision=self.use_vision)
+                            desktop_state = self.desktop.get_state(use_annotation=self.use_annotation,use_vision=self.use_vision)
                             human_prompt = Prompt.observation_prompt(query=query, agent_step=self.agent_step,
                                 tool_result=action_response, desktop_state=desktop_state
                             )
