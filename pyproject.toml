@@ -46,6 +46,7 @@ dependencies = [
     "mistralai>=1.9.11",
     "pywin32>=311",
     "comtypes>=1.4.14",
+    "slack-bolt>=1.21.5",
 ]
 
 [project.optional-dependencies]
