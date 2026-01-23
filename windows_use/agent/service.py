@@ -10,12 +10,15 @@ from windows_use.agent.registry.views import ToolResult
 from windows_use.agent.desktop.service import Desktop
 from windows_use.agent.desktop.views import Browser
 from windows_use.agent.prompt.service import Prompt
+from windows_use.agent.hitl.service import HITLApprovalService
+from windows_use.agent.hitl.views import ApprovalBackend
 from windows_use.llms.base import BaseChatLLM
 from windows_use.agent.utils import xml_parser
 from windows_use.uia import Control
 from contextlib import nullcontext
 from rich.markdown import Markdown
 from rich.console import Console
+from typing import Callable, Optional
 import logging
 
 logger = logging.getLogger("windows_use")
@@ -26,12 +29,29 @@ handler.setFormatter(formatter)
 logger.addHandler(handler)
 
 class Agent:
-    def __init__(self,instructions:list[str]=[],browser:Browser=Browser.EDGE, use_annotation:bool=False, llm: BaseChatLLM=None,max_consecutive_failures:int=3,max_steps:int=25,use_vision:bool=False,auto_minimize:bool=False):
+    def __init__(
+        self,
+        instructions: list[str] = [],
+        browser: Browser = Browser.EDGE,
+        use_annotation: bool = False,
+        llm: BaseChatLLM = None,
+        max_consecutive_failures: int = 3,
+        max_steps: int = 25,
+        use_vision: bool = False,
+        auto_minimize: bool = False,
+        enable_hitl: bool = False,
+        hitl_backend: ApprovalBackend = ApprovalBackend.CLI,
+        hitl_require_approval_for: Optional[set[str]] = None,
+        hitl_min_risk_level: str = "high",
+        hitl_slack_webhook_url: Optional[str] = None,
+        hitl_slack_token: Optional[str] = None,
+        hitl_custom_approver: Optional[Callable] = None,
+    ):
         '''
         Initialize the Windows Use Agent.
 
         The Agent is the core component that orchestrates interactions with the Windows GUI.
-        It uses an LLM to process instructions, analyze the desktop state (via UI automation 
+        It uses an LLM to process instructions, analyze the desktop state (via UI automation
         and optionally vision), and execute tools to achieve the desired goals.
 
         Args:
@@ -43,14 +63,38 @@ class Agent:
             max_steps (int): Maximum number of steps allowed in the agent's execution.
             use_vision (bool): Whether to provide screenshots to the LLM. Defaults to False.
             auto_minimize (bool): Whether to automatically minimize the current window before agent proceeds. Defaults to False.
+            enable_hitl (bool): Whether to enable Human-In-The-Loop approval system. Defaults to False.
+            hitl_backend (ApprovalBackend): Backend for approval requests (CLI, Slack, etc.). Defaults to CLI.
+            hitl_require_approval_for (Optional[set[str]]): Set of tool names requiring approval. None = use risk level.
+            hitl_min_risk_level (str): Minimum risk level requiring approval (critical, high, medium, low). Defaults to "high".
+            hitl_slack_webhook_url (Optional[str]): Slack webhook URL for Slack backend.
+            hitl_slack_token (Optional[str]): Slack bot token for interactive messages.
+            hitl_custom_approver (Optional[Callable]): Custom approval function.
         '''
-        self.name='Windows Use'
-        self.description='An agent that can interact with GUI elements on Windows OS' 
-        self.registry = Registry([
-            click_tool,type_tool, app_tool, shell_tool, done_tool, 
-            shortcut_tool, scroll_tool, move_tool,wait_tool,
-            scrape_tool, desktop_tool
-        ])
+        self.name = 'Windows Use'
+        self.description = 'An agent that can interact with GUI elements on Windows OS'
+
+        # Initialize HITL service if enabled
+        hitl_service = None
+        if enable_hitl:
+            hitl_service = HITLApprovalService(
+                backend=hitl_backend,
+                require_approval_for=hitl_require_approval_for,
+                min_risk_level=hitl_min_risk_level,
+                slack_webhook_url=hitl_slack_webhook_url,
+                slack_token=hitl_slack_token,
+                custom_approver=hitl_custom_approver,
+            )
+            logger.info(f"[Agent] HITL enabled with backend: {hitl_backend}")
+
+        self.registry = Registry(
+            [
+                click_tool, type_tool, app_tool, shell_tool, done_tool,
+                shortcut_tool, scroll_tool, move_tool, wait_tool,
+                scrape_tool, desktop_tool
+            ],
+            hitl_service=hitl_service,
+        )
         self.instructions=instructions
         self.browser=browser
         self.agent_step=AgentStep(max_steps=max_steps)
@@ -171,7 +215,12 @@ class Agent:
                         params = action.params
 
                         if action_name.startswith('Done'):
-                            action_response = self.registry.execute(tool_name=action_name, desktop=None, **params)
+                            action_response = self.registry.execute(
+                                tool_name=action_name,
+                                desktop=None,
+                                step_number=self.agent_step.steps,
+                                **params
+                            )
                             answer = action_response.content
                             logger.info(f"[Agent] 📜 Final-Answer: {answer}\n")
                             agent_data.observation = answer
@@ -179,7 +228,12 @@ class Agent:
                             break  # Exit the while loop successfully
                         else:
                             logger.info(f"[Tool] 🔧 Action: {action_name}({', '.join(f'{k}={v}' for k, v in params.items())})")
-                            action_response = self.registry.execute(tool_name=action_name, desktop=self.desktop, **params)
+                            action_response = self.registry.execute(
+                                tool_name=action_name,
+                                desktop=self.desktop,
+                                step_number=self.agent_step.steps,
+                                **params
+                            )
                             observation = action_response.content if action_response.is_success else action_response.error
                             logger.info(f"[Tool] 📝 Observation: {observation}\n")
                             agent_data.observation = observation

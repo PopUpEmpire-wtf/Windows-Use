@@ -128,6 +128,73 @@ uv run main.py
 
 Talk to your computer. Watch it get things done.
 
+## 🔐 Human-In-The-Loop (HITL) Approval System
+
+Windows-Use includes a built-in Human-In-The-Loop approval system that allows you to review and approve actions before they are executed. This adds an essential layer of control and safety.
+
+### Quick Example
+
+```python
+from windows_use.agent import Agent, Browser
+from windows_use.agent.hitl.views import ApprovalBackend
+from windows_use.llms.anthropic import ChatAnthropic
+
+llm = ChatAnthropic(model="claude-sonnet-4-5", api_key="your-api-key")
+
+# Enable HITL with CLI approval
+agent = Agent(
+    llm=llm,
+    enable_hitl=True,
+    hitl_backend=ApprovalBackend.CLI,
+    hitl_min_risk_level="high"  # Only high/critical risk tools need approval
+)
+
+agent.print_response("Open notepad")
+```
+
+When the agent attempts a high-risk action, you'll see an approval prompt:
+
+```
+┌──────────────────────────────────────────────────────────┐
+│             🔐 HITL Approval Required                    │
+├──────────────────────────────────────────────────────────┤
+│ Tool: app_tool                                           │
+│ Description: Launch, switch, or resize applications      │
+│ Risk Level: HIGH                                         │
+│ Step: 1                                                  │
+│                                                          │
+│ Parameters:                                              │
+│   • name: notepad                                        │
+│   • status: launch                                       │
+└──────────────────────────────────────────────────────────┘
+
+Approve this action? [y/n/d] (y):
+```
+
+### Features
+
+- **Multiple Backends**: CLI (interactive prompts), Slack notifications, or custom approval logic
+- **Risk-Based Filtering**: Auto-approve low-risk operations, review high-risk ones
+- **Tool-Specific Control**: Cherry-pick which tools require approval
+- **Custom Approval Logic**: Integrate with your own systems and policies
+- **Audit Trail**: Log all approval decisions for compliance
+
+### Configuration Options
+
+```python
+agent = Agent(
+    llm=llm,
+    enable_hitl=True,                              # Enable HITL
+    hitl_backend=ApprovalBackend.CLI,              # CLI, SLACK, or AUTO_APPROVE
+    hitl_min_risk_level="high",                    # Risk threshold: low, medium, high, critical
+    hitl_require_approval_for={"shell_tool"},      # Specific tools (optional)
+    hitl_slack_webhook_url="https://...",          # For Slack backend
+    hitl_custom_approver=my_custom_function,       # Custom approval logic
+)
+```
+
+**📖 See [HITL.md](HITL.md) for complete documentation and `examples/hitl_example.py` for working examples.**
+
 ## Star History
 
 [![Star History Chart](https://api.star-history.com/svg?repos=CursorTouch/Windows-Use&type=Date)](https://www.star-history.com/#CursorTouch/Windows-Use&Date)
@@ -145,6 +212,7 @@ The project provides **NO sandbox or isolation layer**. For your safety:
 - ✅ Use a Virtual Machine (VirtualBox, VMware, Hyper-V)
 - ✅ Use Windows Sandbox (Windows 10/11 Pro/Enterprise)
 - ✅ Use a dedicated test machine
+- ✅ **Enable HITL approval system** for manual review of actions (see [HITL.md](HITL.md))
 
 **📖 Read the full [Security Policy](SECURITY.md) before deployment.**
 
