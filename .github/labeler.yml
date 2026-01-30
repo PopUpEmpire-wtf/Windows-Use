@@ -6,12 +6,6 @@ documentation:
   - changed-files:
     - any-glob-to-any-file:
       - '*.md'
-      - 'docs/**/*'
-      - 'AGENTS.md'
-      - 'CONTRIBUTING.md'
-      - 'SECURITY.md'
-      - 'SLACK.md'
-      - 'README.md'
 
 # Configuration files
 configuration:
@@ -49,7 +43,6 @@ slack:
     - any-glob-to-any-file:
       - 'windows_use/slack/**/*'
       - 'slack_bot.py'
-      - 'SLACK.md'
 
 # Desktop/UI automation
 desktop:
