@@ -1,0 +1,79 @@
+# Configuration for the GitHub Actions Labeler
+# This file defines automatic labeling rules for pull requests based on file paths
+
+# Documentation changes
+documentation:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '*.md'
+      - 'docs/**/*'
+      - 'AGENTS.md'
+      - 'CONTRIBUTING.md'
+      - 'SECURITY.md'
+      - 'SLACK.md'
+      - 'README.md'
+
+# Configuration files
+configuration:
+  - changed-files:
+    - any-glob-to-any-file:
+      - '.github/**/*'
+      - '.gitignore'
+      - '.python-version'
+      - 'pyproject.toml'
+      - 'uv.lock'
+      - '.env.example'
+
+# Core agent functionality
+agent:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'windows_use/agent/**/*'
+      - '!windows_use/agent/tools/**/*'
+
+# Tools changes
+tools:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'windows_use/agent/tools/**/*'
+
+# LLM integration changes
+llm:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'windows_use/llms/**/*'
+
+# Slack integration
+slack:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'windows_use/slack/**/*'
+      - 'slack_bot.py'
+      - 'SLACK.md'
+
+# Desktop/UI automation
+desktop:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'windows_use/agent/desktop/**/*'
+      - 'windows_use/agent/tree/**/*'
+      - 'windows_use/uia/**/*'
+
+# Testing
+tests:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'tests/**/*'
+
+# Dependencies
+dependencies:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'pyproject.toml'
+      - 'uv.lock'
+
+# Main entry point
+main:
+  - changed-files:
+    - any-glob-to-any-file:
+      - 'main.py'
