@@ -46,6 +46,8 @@ dependencies = [
     "mistralai>=1.9.11",
     "pywin32>=311",
     "comtypes>=1.4.14",
+    "fastapi>=0.115.0",
+    "uvicorn>=0.34.0",
 ]
 
 [project.optional-dependencies]

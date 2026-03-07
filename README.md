@@ -106,6 +106,35 @@ uv run main.py
 
 ---
 
+## 🔗 ClickUp Integration
+
+Trigger Windows automation directly from your ClickUp workspace.
+
+### How it works
+
+1. Create a ClickUp task tagged **`windows-agent`** — the agent executes the task description.
+2. Post a comment starting with **`@windows-agent`** on any task — the agent executes the request and replies with the result.
+
+### Quick start
+
+```bash
+# Install with ClickUp support
+uv add windows-use fastapi uvicorn
+
+# Configure credentials
+cp .env.example .env
+# → set CLICKUP_API_KEY and an LLM key
+
+# Start the webhook server
+python clickup_bot.py
+```
+
+Then register `http://<your-server>:8000/webhook` in *ClickUp → Settings → Integrations → Webhooks*.
+
+For full setup instructions see [CLICKUP.md](CLICKUP.md).
+
+---
+
 ## 🎥 Demos
 
 **PROMPT:** Write a short note about LLMs and save to the desktop
