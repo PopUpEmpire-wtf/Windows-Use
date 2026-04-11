@@ -225,3 +225,25 @@ class Desktop(SharedBaseModel):
         default=None,
         examples=["My Workspace"]
     )
+
+class Slack(SharedBaseModel):
+    message: str = Field(
+        ...,
+        description="Message text to send to Slack channel. Supports Slack markdown formatting",
+        examples=["Task completed successfully", "Current status: Processing files", "Error: Unable to access file"]
+    )
+    channel: Optional[str] = Field(
+        description="Slack channel to send message to. If not specified, uses default channel from configuration",
+        default=None,
+        examples=["#general", "#windows-use-agent", "#notifications"]
+    )
+    fields: Optional[dict[str, str]] = Field(
+        description="Optional key-value pairs to display as structured fields in the message attachment",
+        default=None,
+        examples=[{"Status": "Complete", "Files Processed": "42"}, {"Error Type": "FileNotFound", "Path": "C:\\data.txt"}]
+    )
+    color: Optional[Literal['success', 'error', 'warning', 'info']] = Field(
+        description="Visual color indicator for the message: 'success' (green), 'error' (red), 'warning' (orange), 'info' (blue)",
+        default='info',
+        examples=['success', 'error', 'warning', 'info']
+    )

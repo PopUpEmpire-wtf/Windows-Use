@@ -1,4 +1,4 @@
-from windows_use.agent.tools.views import Click, Type, Scroll, Move, Shortcut, Wait, Scrape, Done, Shell, Memory, App, MultiSelect, MultiEdit, Desktop
+from windows_use.agent.tools.views import Click, Type, Scroll, Move, Shortcut, Wait, Scrape, Done, Shell, Memory, App, MultiSelect, MultiEdit, Desktop, Slack
 from windows_use.vdm.core import create_desktop as vdm_create, remove_desktop as vdm_remove, rename_desktop as vdm_rename, switch_desktop as vdm_switch
 from windows_use.agent.desktop.service import Desktop as _Desktop
 from typing import Literal,Optional
@@ -379,3 +379,70 @@ def desktop_tool(action: Literal['create', 'remove', 'rename', 'switch', 'get_al
                 return f"Unknown action: {action}"
     except Exception as e:
         return f"Error executing desktop action '{action}': {str(e)}"
+
+@Tool('Slack Tool', args_schema=Slack)
+def slack_tool(message: str, channel: Optional[str] = None, fields: Optional[dict[str, str]] = None, color: Optional[Literal['success', 'error', 'warning', 'info']] = 'info', **kwargs) -> str:
+    '''
+    Sends notifications and status updates to Slack channels.
+
+    Use cases:
+        - Report task completion and results
+        - Send progress updates during long-running operations
+        - Notify about errors or important events
+        - Share structured information with team members
+
+    Features:
+        - Send simple text messages or rich formatted messages
+        - Attach structured fields (key-value pairs) for organized data
+        - Color-code messages for visual categorization
+        - Specify custom channels or use default configuration
+
+    The tool integrates with the Slack workspace configured in environment variables.
+    Requires SLACK_WEBHOOK_URL or SLACK_BOT_TOKEN to be set in .env file.
+    '''
+    try:
+        from windows_use.slack import SlackIntegration, format_custom_message
+        from windows_use.slack.config import COLOR_SUCCESS, COLOR_ERROR, COLOR_WARNING, COLOR_INFO
+
+        # Get slack integration from kwargs if available, otherwise create new instance
+        slack = kwargs.get('slack')
+        if not slack:
+            slack = SlackIntegration()
+
+        # Check if Slack is enabled and configured
+        if not slack.is_enabled():
+            return "Slack integration is not enabled or configured. Set SLACK_WEBHOOK_URL or SLACK_BOT_TOKEN in .env and enable with SLACK_NOTIFICATIONS_ENABLED=true"
+
+        # Map color names to hex codes
+        color_map = {
+            'success': COLOR_SUCCESS,
+            'error': COLOR_ERROR,
+            'warning': COLOR_WARNING,
+            'info': COLOR_INFO,
+        }
+
+        hex_color = color_map.get(color, COLOR_INFO)
+
+        # Format and send message
+        slack_message = format_custom_message(
+            text=message,
+            title=None,
+            fields=fields,
+            color=hex_color
+        )
+
+        if channel:
+            slack_message.channel = channel
+
+        success = slack.send(slack_message)
+
+        if success:
+            channel_info = f" to {channel}" if channel else ""
+            return f"Message sent to Slack{channel_info} successfully."
+        else:
+            return "Failed to send message to Slack. Check logs for details."
+
+    except ImportError:
+        return "Slack SDK not installed. Run: pip install slack-sdk"
+    except Exception as e:
+        return f"Error sending Slack message: {str(e)}"

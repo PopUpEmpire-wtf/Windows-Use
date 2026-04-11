@@ -10,6 +10,33 @@ import os
 
 load_dotenv()
 
+# Slack Integration Configuration (Optional)
+# ==========================================
+# To enable Slack notifications, set the following environment variables in your .env file:
+#
+# SLACK_NOTIFICATIONS_ENABLED=true
+# SLACK_WEBHOOK_URL=https://hooks.slack.com/services/YOUR/WEBHOOK/URL
+# # OR use Slack Bot Token instead of webhook:
+# # SLACK_BOT_TOKEN=xoxb-your-bot-token
+# SLACK_CHANNEL=#windows-use-agent
+#
+# You can also configure notification preferences:
+# - NOTIFY_AGENT_START: Send notification when agent starts (default: true)
+# - NOTIFY_AGENT_COMPLETE: Send notification when agent completes (default: true)
+# - NOTIFY_TOOL_EXECUTION: Send notification for each tool execution (default: true)
+# - NOTIFY_UI_EVENTS: Send notification for UI events (focus/property changes) (default: false)
+# - NOTIFY_ERRORS: Send notification for errors (default: true)
+#
+# The agent will automatically send rich formatted messages to Slack including:
+# - Agent start with query, model, and max steps
+# - Each step with thought and action
+# - Tool executions with parameters and results
+# - Completion status with final answer
+# - Error notifications with context
+#
+# The LLM can also send custom messages to Slack using the Slack Tool:
+# Example: slack_tool(message="Task completed successfully", color="success")
+
 def main():
     api_key = os.getenv("OPENROUTER_API_KEY")
     # llm=ChatMistral(model='magistral-small-latest',api_key=api_key,temperature=0.7)

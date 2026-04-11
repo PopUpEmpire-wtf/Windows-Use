@@ -1,8 +1,10 @@
 from windows_use.agent.tools.service import (click_tool, type_tool, shell_tool, done_tool,
-shortcut_tool, scroll_tool, move_tool, wait_tool, app_tool, scrape_tool, desktop_tool)
+shortcut_tool, scroll_tool, move_tool, wait_tool, app_tool, scrape_tool, desktop_tool, slack_tool)
 from windows_use.messages import SystemMessage, HumanMessage, AIMessage, ImageMessage
 from windows_use.telemetry.views import AgentTelemetryEvent
 from windows_use.telemetry.service import ProductTelemetry
+from windows_use.slack import (SlackIntegration, format_agent_start, format_agent_step,
+    format_agent_complete, format_tool_execution, format_error)
 from windows_use.agent.views import AgentResult,AgentStep
 from windows_use.agent.registry.service import Registry
 from windows_use.agent.watchdog.service import WatchDog
@@ -47,9 +49,9 @@ class Agent:
         self.name='Windows Use'
         self.description='An agent that can interact with GUI elements on Windows OS' 
         self.registry = Registry([
-            click_tool,type_tool, app_tool, shell_tool, done_tool, 
+            click_tool,type_tool, app_tool, shell_tool, done_tool,
             shortcut_tool, scroll_tool, move_tool,wait_tool,
-            scrape_tool, desktop_tool
+            scrape_tool, desktop_tool, slack_tool
         ])
         self.instructions=instructions
         self.browser=browser
@@ -62,6 +64,7 @@ class Agent:
         self.use_vision=True if use_annotation else use_vision
         self.llm = llm
         self.telemetry=ProductTelemetry()
+        self.slack = SlackIntegration()
         self.watchdog = WatchDog()
         self.desktop = Desktop()
         self.console=Console()
@@ -84,11 +87,23 @@ class Agent:
         """
         if query.strip()=='':
             return AgentResult(is_done=False, error="Query is empty. Please provide a valid query.")
+
+        # Send agent start notification to Slack
+        if self.slack.is_enabled() and self.slack.config.notify_agent_start:
+            start_message = format_agent_start(
+                query=query,
+                max_steps=self.agent_step.max_steps,
+                model=self.llm.model_name,
+                provider=self.llm.provider
+            )
+            self.slack.send(start_message)
+
         try:
             with (self.desktop.auto_minimize() if self.auto_minimize else nullcontext()):
-                self.watchdog.set_focus_callback(self.desktop.tree._on_focus_change)
-                # self.watchdog.set_structure_callback(self.desktop.tree._on_structure_change) 
-                self.watchdog.set_property_callback(self.desktop.tree._on_property_change)
+                # Use wrapper callbacks that include Slack notifications
+                self.watchdog.set_focus_callback(self._on_focus_change_with_slack)
+                # self.watchdog.set_structure_callback(self.desktop.tree._on_structure_change)
+                self.watchdog.set_property_callback(self._on_property_change_with_slack)
                 with self.watchdog:
                     desktop_state = self.desktop.get_state(use_annotation=self.use_annotation,use_vision=self.use_vision)
                     language=self.desktop.get_default_language()
@@ -137,6 +152,13 @@ class Agent:
                                         provider=self.llm.provider,
                                         is_success=False
                                     ))
+                                    # Send error notification to Slack
+                                    if self.slack.is_enabled() and self.slack.config.notify_errors:
+                                        error_message = format_error(
+                                            error_message=f"Agent error: {str(e)}",
+                                            context=f"Query: {query}\nStep: {self.agent_step.steps}/{self.agent_step.max_steps}"
+                                        )
+                                        self.slack.send(error_message)
                                     return AgentResult(is_done=False, error=str(e))
                             except Exception as e:
                                 logger.error(f"[LLM]: Failed to generate response. Retrying attempt {consecutive_failures}/{self.max_consecutive_failures}...")
@@ -151,10 +173,27 @@ class Agent:
                                         provider=self.llm.provider,
                                         is_success=False
                                     ))
+                                    # Send error notification to Slack
+                                    if self.slack.is_enabled() and self.slack.config.notify_errors:
+                                        error_message = format_error(
+                                            error_message=f"Agent error: {str(e)}",
+                                            context=f"Query: {query}\nStep: {self.agent_step.steps}/{self.agent_step.max_steps}"
+                                        )
+                                        self.slack.send(error_message)
                                     return AgentResult(is_done=False, error=str(e))
 
                         logger.info(f"[Agent] 📝 Evaluate: {agent_data.evaluate}")
                         logger.info(f"[Agent] 💭 Thought: {agent_data.thought}")
+
+                        # Send step notification to Slack
+                        if self.slack.is_enabled():
+                            step_message = format_agent_step(
+                                step=self.agent_step.steps,
+                                max_steps=self.agent_step.max_steps,
+                                thought=agent_data.thought,
+                                action_name=agent_data.action.name if agent_data.action else None
+                            )
+                            self.slack.send(step_message)
 
                         # Remove previous Desktop State Human Message
                         messages.pop()
@@ -179,10 +218,20 @@ class Agent:
                             break  # Exit the while loop successfully
                         else:
                             logger.info(f"[Tool] 🔧 Action: {action_name}({', '.join(f'{k}={v}' for k, v in params.items())})")
-                            action_response = self.registry.execute(tool_name=action_name, desktop=self.desktop, **params)
+                            action_response = self.registry.execute(tool_name=action_name, desktop=self.desktop, slack=self.slack, **params)
                             observation = action_response.content if action_response.is_success else action_response.error
                             logger.info(f"[Tool] 📝 Observation: {observation}\n")
                             agent_data.observation = observation
+
+                            # Send tool execution notification to Slack
+                            if self.slack.is_enabled() and self.slack.config.notify_tool_execution:
+                                tool_message = format_tool_execution(
+                                    tool_name=action_name,
+                                    params=params,
+                                    result=observation,
+                                    is_success=action_response.is_success
+                                )
+                                self.slack.send(tool_message)
 
                             desktop_state = self.desktop.get_state(use_annotation=self.use_annotation,use_vision=self.use_vision)
                             human_prompt = Prompt.observation_prompt(query=query, agent_step=self.agent_step,
@@ -203,6 +252,13 @@ class Agent:
                         provider=self.llm.provider,
                         is_success=False
                     ))
+                    # Send error notification to Slack
+                    if self.slack.is_enabled() and self.slack.config.notify_errors:
+                        error_message = format_error(
+                            error_message="Max steps reached",
+                            context=f"Query: {query}"
+                        )
+                        self.slack.send(error_message)
                     return AgentResult(is_done=False, error="Max steps reached")
                 
                 self.telemetry.capture(AgentTelemetryEvent(
@@ -215,13 +271,70 @@ class Agent:
                     provider=self.llm.provider,
                     is_success=True
                 ))
+                # Send completion notification to Slack
+                if self.slack.is_enabled() and self.slack.config.notify_agent_complete:
+                    complete_message = format_agent_complete(
+                        is_success=True,
+                        answer=answer,
+                        error=None,
+                        steps=self.agent_step.steps,
+                        max_steps=self.agent_step.max_steps
+                    )
+                    self.slack.send(complete_message)
             self.agent_step.reset()
             return AgentResult(is_done=True,content=answer)
         except KeyboardInterrupt:
             logger.warning("[Agent] ⚠️: Interrupted by user (Ctrl+C).")
             self.telemetry.flush()
+            # Send error notification to Slack
+            if self.slack.is_enabled() and self.slack.config.notify_errors:
+                error_message = format_error(
+                    error_message="Agent interrupted by user (Ctrl+C)",
+                    context=f"Query: {query}"
+                )
+                self.slack.send(error_message)
             return AgentResult(is_done=False, error="Interrupted by user")
         
+    def _on_focus_change_with_slack(self, sender):
+        """Wrapper for focus change events that sends Slack notifications."""
+        # Call original tree callback
+        self.desktop.tree._on_focus_change(sender)
+
+        # Send Slack notification if enabled
+        if self.slack.is_enabled() and self.slack.config.notify_ui_events:
+            try:
+                from windows_use.uia import Control
+                from windows_use.slack import format_ui_event_focus
+
+                element = Control.CreateControlFromElement(sender)
+                focus_message = format_ui_event_focus(
+                    app_name=getattr(element, 'ProcessName', 'Unknown'),
+                    element_name=getattr(element, 'Name', 'Unknown')
+                )
+                self.slack.send(focus_message)
+            except Exception as e:
+                logger.debug(f"[Slack] Failed to send focus event: {e}")
+
+    def _on_property_change_with_slack(self, sender, propertyId, newValue):
+        """Wrapper for property change events that sends Slack notifications."""
+        # Call original tree callback
+        self.desktop.tree._on_property_change(sender, propertyId, newValue)
+
+        # Send Slack notification if enabled
+        if self.slack.is_enabled() and self.slack.config.notify_ui_events:
+            try:
+                from windows_use.uia import Control
+                from windows_use.slack import format_ui_event_property
+
+                element = Control.CreateControlFromElement(sender)
+                property_message = format_ui_event_property(
+                    property_name=f"Property {propertyId}",
+                    app_name=getattr(element, 'ProcessName', 'Unknown')
+                )
+                self.slack.send(property_message)
+            except Exception as e:
+                logger.debug(f"[Slack] Failed to send property event: {e}")
+
     def print_response(self,query: str):
         """Print the response from the agent."""
         response=self.invoke(query)
